@@ -1,0 +1,23 @@
+server:
+  port: '${SERVER_PORT}'
+  error:
+    include-stacktrace: never
+  allowed-origins: '${ALLOWED_ORIGINS_URI_CORS}'
+
+spring:
+  application:
+    name: auth-server
+
+uri:
+  login-redirect: '${LOGIN_REDIRECT}'
+  logout-redirect: '${LOGOUT_REDIRECT}'
+security:
+  secret-key: '${CLIENT_SECRET}'
+  authserver-uri: '${AUTHSERVER_URI}'
+
+oauth2:
+  client:
+    scope: '${CLIENT_USER_SERVICE_SCOPE}'
+  clientid:
+    service-client: '${CLIENTID_USER_SERVICE}'
+    oidc-client: '${CLIENTID_OIDC}'

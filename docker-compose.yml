@@ -1,0 +1,17 @@
+services:
+  auth-service:
+    build: .
+    image: dockerfrancisx/auth-server:beta
+    ports:
+      - "9000:9000"
+    environment:
+      AUTHSERVER_URI: http://localhost:9000
+      SERVER_PORT: 9000
+      LOGIN_REDIRECT: http://127.0.0.1:8080/login/oauth2/code/oauth2-client
+      LOGOUT_REDIRECT: http://127.0.0.1:8080/
+      CLIENT_SECRET: super_secret_password
+      CLIENT_USER_SERVICE_SCOPE: user.read
+      CLIENTID_USER_SERVICE: user-client
+      CLIENTID_OIDC: oidc-client
+      ALLOWED_ORIGINS_URI_CORS: http://localhost:3000
+    restart: always
