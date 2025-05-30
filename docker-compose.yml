@@ -1,7 +1,7 @@
 services:
   auth-service:
     build: .
-    image: dockerfrancisx/auth-server:beta
+#    image: dockerfrancisx/auth-server:beta
     ports:
       - "9000:9000"
     environment:
