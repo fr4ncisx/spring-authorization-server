@@ -39,7 +39,7 @@ import java.util.UUID;
 public class SecurityConfig {
 
     @Value("${security.authserver-uri}")
-    private String AUTHORIZATION_SERVER_URI;
+    private String issuerAuthServerUri;
     @Value("${uri.login-redirect}")
     private String loginRedirectUri;
     @Value("${uri.logout-redirect}")
@@ -115,7 +115,7 @@ public class SecurityConfig {
     @Bean
     public AuthorizationServerSettings authorizationServerSettings() {
         return AuthorizationServerSettings.builder()
-                .issuer(AUTHORIZATION_SERVER_URI)
+                .issuer(issuerAuthServerUri)
                 .build();
     }
 
