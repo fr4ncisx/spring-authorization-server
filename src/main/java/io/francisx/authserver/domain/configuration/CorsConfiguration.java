@@ -1,4 +1,4 @@
-package io.francisx.authserver.configuration;
+package io.francisx.authserver.domain.configuration;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
