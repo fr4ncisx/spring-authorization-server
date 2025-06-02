@@ -14,6 +14,8 @@ uri:
 security:
   secret-key: '${CLIENT_SECRET}'
   authserver-uri: '${AUTHSERVER_URI}'
+  token:
+    uri: '${TOKEN_URI}'
 
 oauth2:
   client:
@@ -21,3 +23,10 @@ oauth2:
   clientid:
     service-client: '${CLIENTID_USER_SERVICE}'
     oidc-client: '${CLIENTID_OIDC}'
+feign:
+  user-service:
+    name: '${FEIGN_USER_SERVICE_NAME}'
+eureka:
+  client:
+    service-url:
+      defaultZone: '${EUREKA_SERVER_URI}'
