@@ -1,11 +1,12 @@
 services:
   auth-service:
     build: .
-#    image: dockerfrancisx/auth-server:beta
+    #image: dockerfrancisx/auth-server:beta
     ports:
       - "9000:9000"
     environment:
       AUTHSERVER_URI: http://localhost:9000
+      TOKEN_URI: http://localhost:9000/oauth2/token
       SERVER_PORT: 9000
       LOGIN_REDIRECT: http://127.0.0.1:8080/login/oauth2/code/oauth2-client
       LOGOUT_REDIRECT: http://127.0.0.1:8080/
@@ -14,4 +15,6 @@ services:
       CLIENTID_USER_SERVICE: user-client
       CLIENTID_OIDC: oidc-client
       ALLOWED_ORIGINS_URI_CORS: http://localhost:3000
+      FEIGN_USER_SERVICE_NAME: user-service
+      EUREKA_SERVER_URI: http://host.docker.internal:8761/eureka/
     restart: always
