@@ -1,4 +1,4 @@
-package io.francisx.authserver.security;
+package io.francisx.authserver.infrastructure.security;
 
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
@@ -12,7 +12,6 @@ import org.springframework.core.annotation.Order;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
@@ -63,6 +62,7 @@ public class SecurityConfig {
                         authServer.oidc(Customizer.withDefaults()))
                 .authorizeHttpRequests(authorize -> authorize.anyRequest()
                         .authenticated())
+                .formLogin(Customizer.withDefaults())
                 .build();
     }
 
@@ -73,7 +73,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .anyRequest()
                         .authenticated())
-                .csrf(AbstractHttpConfigurer::disable)
+                .formLogin(Customizer.withDefaults())
                 .cors(Customizer.withDefaults())
                 .build();
     }
@@ -124,6 +124,11 @@ public class SecurityConfig {
         return encoder.encode(rawValue);
     }
 
+    /**
+     * This is the representation of the oauth client only to call UserService to get
+     * the User Object
+     * @return new oauth client
+     */
     private RegisteredClient getUserServiceClient(){
         return RegisteredClient.withId(UUID.randomUUID().toString())
                 .clientId(clientIdServiceClient)
@@ -134,6 +139,10 @@ public class SecurityConfig {
                 .build();
     }
 
+    /**
+     * This is the representation of the oauth client with high privileges having scope {@code read} and {@code write}
+     * @return new oauth client with read and write scopes
+     */
     private RegisteredClient getOidcClient(){
         return RegisteredClient
                 .withId(UUID.randomUUID().toString())
