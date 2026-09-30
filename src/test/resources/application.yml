@@ -12,15 +12,10 @@ spring:
     error:
       include-stacktrace: never
   datasource:
-    url: '${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/auth_db}'
-    username: '${SPRING_DATASOURCE_USERNAME:postgres}'
-    password: '${SPRING_DATASOURCE_PASSWORD:postgres}'
-    driver-class-name: org.postgresql.Driver
-    hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
-      idle-timeout: 300000
-      connection-timeout: 20000
+    url: jdbc:h2:mem:auth_test_db;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ''
   flyway:
     enabled: true
     baseline-on-migrate: true
