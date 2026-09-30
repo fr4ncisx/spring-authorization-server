@@ -9,6 +9,8 @@ Cloud-native token issuance and authentication server for distributed service ar
 [![Java](https://img.shields.io/badge/Java-25-ED8B00?style=flat-square&logo=openjdk&logoColor=white)](pom.xml)
 [![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.1.1-6DB33F?style=flat-square&logo=springboot&logoColor=white)](pom.xml)
 [![Spring Security](https://img.shields.io/badge/Spring_Security-7.1.1-6DB33F?style=flat-square&logo=springsecurity&logoColor=white)](pom.xml)
+[![Bucket4j](https://img.shields.io/badge/Bucket4j-8.20.0-4B0082?style=flat-square)](pom.xml)
+[![RFC 9457](https://img.shields.io/badge/RFC-9457-005A9C?style=flat-square)](https://datatracker.ietf.org/doc/html/rfc9457)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?style=flat-square&logo=postgresql&logoColor=white)](docker-compose.yml)
 [![Testcontainers](https://img.shields.io/badge/Testcontainers-1.20.4-2496ED?style=flat-square&logo=docker&logoColor=white)](src/test/java/io/francisx/authserver/PostgreSQLTestcontainersIntegrationTest.java)
 [![Flyway](https://img.shields.io/badge/Flyway-12.4.0-CC0200?style=flat-square&logo=flyway&logoColor=white)](src/main/resources/db/migration)
@@ -67,6 +69,9 @@ curl -i http://localhost:9000/actuator/health/liveness
 - [Usage](#usage)
   - [Docker Compose Orchestration](#docker-compose-orchestration)
   - [OAuth2 Protocol Flow](#oauth2-protocol-flow)
+  - [Rate Limiting and Resilience](#rate-limiting-and-resilience)
+  - [Persistent RSA Key Management](#persistent-rsa-key-management)
+  - [RFC 9457 Problem Details Specifications](#rfc-9457-problem-details-specifications)
 - [Database Persistence and Migrations](#database-persistence-and-migrations)
 - [Troubleshooting](#troubleshooting)
 - [Feedback](#feedback)
@@ -78,6 +83,9 @@ curl -i http://localhost:9000/actuator/health/liveness
 | Feature | Description |
 |---|---|
 | **Enterprise Persistence** | Persists registered OAuth2 clients, active authorizations, and user consents in PostgreSQL 18 with automated Flyway versioned migrations. |
+| **Persistent RSA Keys** | Maintains deterministic RSA 2048-bit signing key pairs across server restarts via PKCS#12 keystore, PEM inputs, or local persistent store with deterministic key ID (`auth-server-key-1`). |
+| **Token-Bucket Rate Limiting** | Throttles brute-force and credential-stuffing attempts on `/login` and `/oauth2/token` to 15 req/min per IP using Bucket4j with `Retry-After: 60` headers. |
+| **RFC 9457 Problem Details** | Standardizes centralized error responses across all security and runtime exceptions using `application/problem+json` format. |
 | **Protocol Compliance** | Issues signed JWT access tokens and OpenID Connect ID tokens via standard authorization code and client credentials grants. |
 | **PKCE Enforcement** | Enforces Proof Key for Code Exchange on authorization code flows to prevent interception attacks. |
 | **Cloud-Native Discovery** | Resolves external services through container network DNS rather than centralized registry servers. |
@@ -89,14 +97,16 @@ curl -i http://localhost:9000/actuator/health/liveness
 
 ## Components
 
-The system consists of six main architectural components:
+The system consists of eight core architectural components:
 
-1. **Security Configuration** (`src/main/java/io/francisx/authserver/infrastructure/security/SecurityConfig.java`) — Configures dual security filter chains, cryptographic JWK key pairs, JDBC client and authorization repositories, and automated client bootstrapping.
-2. **Database Migrations** (`src/main/resources/db/migration/V1__oauth2_schema.sql`) — Manages versioned Flyway DDL migrations for client registries, authorization sessions, and user consents.
-3. **Authentication Provider** (`src/main/java/io/francisx/authserver/infrastructure/security/CustomAuthProvider.java`) — Validates user credentials against the user service with timing-attack mitigation.
-4. **Token Service** (`src/main/java/io/francisx/authserver/infrastructure/security/TokenService.java`) — Handles internal service tokens with thread-safe caching and connection pooling.
-5. **Declarative HTTP Client** (`src/main/java/io/francisx/authserver/infrastructure/client/CustomFeignClient.java`) — Communicates with the upstream user service over DNS-backed endpoints.
-6. **CORS Configuration** (`src/main/java/io/francisx/authserver/domain/configuration/CorsConfiguration.java`) — Sanitizes cross-origin request headers and enforces safe HTTP methods.
+1. **Security Configuration** (`src/main/java/io/francisx/authserver/infrastructure/security/SecurityConfig.java`) — Configures dual security filter chains, cryptographic JWK key sources, JDBC client and authorization repositories, rate-limiting filters, and automated client bootstrapping.
+2. **Persistent RSA Properties** (`src/main/java/io/francisx/authserver/config/properties/RsaKeyProperties.java`) — Configures deterministic key ID, PEM encoded keys, or PKCS#12 keystore loading credentials.
+3. **Token-Bucket Rate Limiting Filter** (`src/main/java/io/francisx/authserver/infrastructure/security/ratelimit/RateLimitingFilter.java`) — Intercepts POST requests to `/login` and `/oauth2/token`, applying per-IP token-bucket algorithms with RFC 9457 error output.
+4. **RFC 9457 Exception Handler** (`src/main/java/io/francisx/authserver/domain/exception/GlobalExceptionHandler.java`) — Centralizes exception mappings to structured ProblemDetail payloads.
+5. **Database Migrations** (`src/main/resources/db/migration/V1__oauth2_schema.sql`) — Manages versioned Flyway DDL migrations for client registries, authorization sessions, and user consents.
+6. **Authentication Provider** (`src/main/java/io/francisx/authserver/infrastructure/security/CustomAuthProvider.java`) — Validates user credentials against the user service with timing-attack mitigation.
+7. **Token Service** (`src/main/java/io/francisx/authserver/infrastructure/security/TokenService.java`) — Handles internal service tokens with thread-safe caching and connection pooling.
+8. **CORS Configuration** (`src/main/java/io/francisx/authserver/domain/configuration/CorsConfiguration.java`) — Sanitizes cross-origin request headers and enforces safe HTTP methods.
 
 ---
 
@@ -130,7 +140,7 @@ docker build -t auth-server:latest .
 
 ### Running Tests
 
-Execute the automated unit and mock test suite covering OAuth2 protocol compliance, security boundaries, Flyway migration execution against H2 in PostgreSQL compatibility mode, timing-attack mitigation, and token service concurrency:
+Execute the automated unit and mock test suite covering OAuth2 protocol compliance, security boundaries, rate limiting, deterministic key management, RFC 9457 error handling, Flyway migration execution against H2 in PostgreSQL compatibility mode, timing-attack mitigation, and token service concurrency:
 
 ```bash
 ./mvnw clean test
@@ -163,6 +173,7 @@ The integration test suite (`PostgreSQLTestcontainersIntegrationTest`) automatic
 | `CLIENT_SECRET` | `test-secret-key-32-chars-long-minimum!` | Secret key used for authenticating client applications. |
 | `AUTHSERVER_URI` | `http://localhost:9000` | Public base address of this authorization server. |
 | `TOKEN_URI` | `http://localhost:9000/oauth2/token` | Canonical endpoint where OAuth2 tokens are minted. |
+| `RSA_KEY_ID` | `auth-server-key-1` | Deterministic key identifier (`kid`) exposed in the JWK Set. |
 | `CLIENT_USER_SERVICE_SCOPE` | `user.read` | Required OAuth2 scope to query user information. |
 | `CLIENTID_USER_SERVICE` | `user-client` | Client identifier used for internal microservice communication. |
 | `CLIENTID_OIDC` | `oidc-client` | Client identifier for front-channel authentication. |
@@ -254,6 +265,54 @@ curl -s -X POST http://localhost:9000/oauth2/token \
   -d "grant_type=client_credentials&scope=user.read"
 ```
 
+### Rate Limiting and Resilience
+
+| Target Endpoint | HTTP Method | Policy | Algorithm | Exhaustion Response |
+|---|---|---|---|---|
+| `/login` | `POST` | 15 req/min per IP | Token Bucket (Bucket4j greedy refill) | HTTP 429 Too Many Requests (`Retry-After: 60`, RFC 9457 ProblemDetail) |
+| `/oauth2/token` | `POST` | 15 req/min per IP | Token Bucket (Bucket4j greedy refill) | HTTP 429 Too Many Requests (`Retry-After: 60`, RFC 9457 ProblemDetail) |
+
+Client IP addresses are extracted from `X-Forwarded-For` when fronted by edge proxies, falling back to the direct socket address.
+
+### Persistent RSA Key Management
+
+| Parameter | Specification | Configuration |
+|---|---|---|
+| **Key Type** | RSA 2048-bit | Deterministic generation or PEM / PKCS#12 import |
+| **Key ID (`kid`)** | `auth-server-key-1` | `security.rsa.key-id` (`RSA_KEY_ID`) |
+| **Local Store** | `auth-keystore.p12` | Working directory PKCS#12 keystore |
+| **Signing Algorithm** | `SHA256withRSA` (RS256) | Nimbus JOSE / Spring Authorization Server |
+| **Discovery Exposure** | `/oauth2/jwks` | Deterministic `kid` across reboots |
+
+### RFC 9457 Problem Details Specifications
+
+Standardized error serialization formats are produced for all application and security exceptions:
+
+| Exception Type | HTTP Status | Problem Detail Title / Message |
+|---|---|---|
+| `BadCredentialsException` | `401 Unauthorized` | `Invalid credentials provided` |
+| `AccessDeniedException` | `403 Forbidden` | `Access is denied` |
+| `MethodArgumentNotValidException` | `400 Bad Request` | `Validation failed for request arguments` |
+| `RestClientException` | `503 Service Unavailable` | `Authentication upstream service is unavailable` |
+| `RateLimitExceeded` | `429 Too Many Requests` | `Rate limit exceeded. Try again in 60 seconds.` |
+| `General Exception` | `500 Internal Server Error` | `An unexpected server error occurred` |
+
+Example HTTP 429 RFC 9457 response:
+
+```http
+HTTP/1.1 429 Too Many Requests
+Content-Type: application/problem+json
+Retry-After: 60
+
+{
+  "type": "about:blank",
+  "title": "Too Many Requests",
+  "status": 429,
+  "detail": "Rate limit exceeded. Try again in 60 seconds.",
+  "instance": "/oauth2/token"
+}
+```
+
 ---
 
 ## Database Persistence and Migrations
@@ -279,6 +338,7 @@ Flyway executes `V1__oauth2_schema.sql` automatically upon application startup. 
 | **Authentication fails with 401** | Confirm that `USER_SERVICE_URL` points to an active user service instance and check credentials. |
 | **CORS preflight rejected** | Add your client origin to `ALLOWED_ORIGINS_URI_CORS` in `.env` and restart the container. |
 | **Connection refused on localhost** | Ensure no local process binds to port `9000` or `5432` before running Docker Compose. |
+| **Rate limit reached (429)** | Wait 60 seconds or evaluate client request volume against the 15 req/min threshold. |
 
 ---
 
