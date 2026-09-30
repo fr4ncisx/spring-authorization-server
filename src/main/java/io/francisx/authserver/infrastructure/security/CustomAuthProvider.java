@@ -1,7 +1,7 @@
 package io.francisx.authserver.infrastructure.security;
 
 import io.francisx.authserver.domain.dto.response.UserResponse;
-import io.francisx.authserver.infrastructure.client.CustomFeignClient;
+import io.francisx.authserver.infrastructure.client.UserClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -9,38 +9,52 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.RestClientException;
+
+import java.util.Collections;
+import java.util.List;
 
 @RequiredArgsConstructor
 @Component
 public class CustomAuthProvider implements AuthenticationProvider {
 
-    private final CustomFeignClient feignClient;
+    private static final String DUMMY_HASH = "$2a$10$wO8lEcm8V5v3z/p6d6O.z.QeS7uN6L3QOa8pZlS7k2r1M2q4k7Z0e";
 
-    /**
-     * This verifies Authentication from UI login with DB
-     * checks if password matches
-     * @param authentication the authentication request object.
-     * @return authenticated username
-     */
+    private final UserClient userClient;
+    private final PasswordEncoder passwordEncoder;
+
     @Override
     public Authentication authenticate(Authentication authentication) throws AuthenticationException {
-        UserResponse user = feignClient.findByUsername(authentication.getName());
+        String username = authentication.getName();
+        String presentedPassword = authentication.getCredentials() != null ? authentication.getCredentials().toString() : "";
 
-        PasswordEncoder encoder = new BCryptPasswordEncoder();
-
-        boolean passwordMatch = encoder.matches(authentication.getCredentials().toString()
-                , user.getPassword());
-        if(!passwordMatch){
-            throw new BadCredentialsException("Invalid password");
+        UserResponse user;
+        try {
+            user = userClient.findByUsername(username);
+        } catch (HttpClientErrorException.NotFound ex) {
+            user = null;
+        } catch (RestClientException ex) {
+            throw new BadCredentialsException("Authentication service unavailable");
         }
-        var authorities = user.getRole().stream()
+
+        if (user == null || user.password() == null) {
+            passwordEncoder.matches(presentedPassword, DUMMY_HASH);
+            throw new BadCredentialsException("Bad credentials");
+        }
+
+        if (!passwordEncoder.matches(presentedPassword, user.password())) {
+            throw new BadCredentialsException("Bad credentials");
+        }
+
+        List<String> roles = user.role() != null ? user.role() : Collections.emptyList();
+        var authorities = roles.stream()
                 .map(SimpleGrantedAuthority::new)
                 .toList();
-        return new UsernamePasswordAuthenticationToken(user.getUsername(),
-                null, authorities);
+
+        return new UsernamePasswordAuthenticationToken(user.username(), null, authorities);
     }
 
     @Override
