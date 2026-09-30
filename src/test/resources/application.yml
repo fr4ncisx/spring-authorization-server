@@ -43,6 +43,8 @@ uri:
   logout-redirect: '${LOGOUT_REDIRECT:http://127.0.0.1:8080/}'
 
 security:
+  rsa:
+    key-id: '${RSA_KEY_ID:auth-server-key-1}'
   secret-key: '${CLIENT_SECRET:test-secret-key-32-chars-long-minimum!}'
   authserver-uri: '${AUTHSERVER_URI:http://localhost:9000}'
   token:

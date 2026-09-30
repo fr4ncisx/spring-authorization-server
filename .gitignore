@@ -37,3 +37,6 @@ build/
 
 ### ODD Tasks ###
 odd/
+auth-keystore.p12
+*.p12
+
