@@ -1,20 +1,95 @@
 services:
-  auth-service:
-    build: .
-    #image: dockerfrancisx/auth-server:beta
-    ports:
-      - "9000:9000"
+  postgres:
+    image: postgres:18-alpine
+    container_name: auth-postgres
     environment:
-      AUTHSERVER_URI: http://localhost:9000
-      TOKEN_URI: http://localhost:9000/oauth2/token
-      SERVER_PORT: 9000
-      LOGIN_REDIRECT: http://127.0.0.1:8080/login/oauth2/code/oauth2-client
-      LOGOUT_REDIRECT: http://127.0.0.1:8080/
-      CLIENT_SECRET: super_secret_password
-      CLIENT_USER_SERVICE_SCOPE: user.read
-      CLIENTID_USER_SERVICE: user-client
-      CLIENTID_OIDC: oidc-client
-      ALLOWED_ORIGINS_URI_CORS: http://localhost:3000
-      FEIGN_USER_SERVICE_NAME: user-service
-      EUREKA_SERVER_URI: http://host.docker.internal:8761/eureka/
-    restart: always
+      POSTGRES_DB: ${POSTGRES_DB:-auth_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    networks:
+      - auth-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-auth_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: 1.0
+          memory: 512M
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${SERVER_PORT:-9000}:${SERVER_PORT:-9000}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - auth-network
+    environment:
+      SERVER_PORT: ${SERVER_PORT:-9000}
+      ALLOWED_ORIGINS_URI_CORS: ${ALLOWED_ORIGINS_URI_CORS}
+      LOGIN_REDIRECT: ${LOGIN_REDIRECT}
+      LOGOUT_REDIRECT: ${LOGOUT_REDIRECT}
+      CLIENT_SECRET: ${CLIENT_SECRET}
+      AUTHSERVER_URI: ${AUTHSERVER_URI}
+      TOKEN_URI: ${TOKEN_URI}
+      CLIENT_USER_SERVICE_SCOPE: ${CLIENT_USER_SERVICE_SCOPE}
+      CLIENTID_USER_SERVICE: ${CLIENTID_USER_SERVICE}
+      CLIENTID_OIDC: ${CLIENTID_OIDC}
+      USER_SERVICE_URL: ${USER_SERVICE_URL}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-auth_db}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/actuator/health/liveness"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    stop_grace_period: 30s
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: 2.0
+          memory: 1024M
+        reservations:
+          cpus: 0.5
+          memory: 512M
+    restart: unless-stopped
+
+networks:
+  auth-network:
+    name: auth_network
+
+volumes:
+  postgres_data:
+    name: auth_postgres_data

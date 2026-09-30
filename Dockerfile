@@ -1,25 +1,40 @@
-## BUILDER ##
-FROM maven:3.9-eclipse-temurin-21-alpine AS builder
-
+FROM eclipse-temurin:25-alpine AS builder
 WORKDIR /workspace
 
-# Copiar archivos esenciales primero (aprovechar caché)
 COPY pom.xml mvnw ./
 COPY .mvn .mvn
 RUN chmod +x mvnw && ./mvnw -B dependency:go-offline
 
-# Copiar el código fuente y compilar
 COPY src src
-RUN ./mvnw -B clean package -DskipTests -Dspring-boot.build-image.layers=true
+RUN ./mvnw -B clean package -DskipTests
+RUN java -Djarmode=tools -jar target/*.jar extract --layers --destination extracted
 
-## RUNTIME ##
-FROM gcr.io/distroless/java21-debian12:nonroot AS runtime
+FROM eclipse-temurin:25-jre-alpine AS runtime
+
+RUN apk update && apk add --no-cache curl && rm -rf /var/cache/apk/*
+
+RUN addgroup --system --gid 10001 appgroup && \
+    adduser --system --uid 10001 --ingroup appgroup --no-create-home --disabled-password appuser
 
 WORKDIR /app
 
-COPY --from=builder /workspace/target/*.jar auth-server.jar
+COPY --from=builder --chown=appuser:appgroup /workspace/extracted/dependencies/ ./
+COPY --from=builder --chown=appuser:appgroup /workspace/extracted/spring-boot-loader/ ./
+COPY --from=builder --chown=appuser:appgroup /workspace/extracted/snapshot-dependencies/ ./
+COPY --from=builder --chown=appuser:appgroup /workspace/extracted/application/ ./
 
-USER nonroot:nonroot
-EXPOSE 8080
+RUN chmod -R 550 /app
 
-ENTRYPOINT ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75", "-XX:+UseG1GC", "-jar", "/app/auth-server.jar"]
+USER 10001:10001
+
+EXPOSE 9000
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+  CMD curl --silent --fail http://localhost:9000/actuator/health/liveness || exit 1
+
+ENTRYPOINT ["java", \
+  "-XX:+UseContainerSupport", \
+  "-XX:MaxRAMPercentage=75.0", \
+  "-XX:+ExitOnOutOfMemoryError", \
+  "-Djava.security.egd=file:/dev/./urandom", \
+  "org.springframework.boot.loader.launch.JarLauncher"]
